@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>سامانه هوشمند مسابقات</title>
+    
+    <script src="https://developer.eitaa.com/eitaa-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        body { 
+            font-family: 'Vazirmatn', Tahoma, sans-serif; 
+            background: #f8fafc; 
+            -webkit-tap-highlight-color: transparent;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        [x-cloak] { display: none !important; }
+        .pb-safe { padding-bottom: calc(4rem + env(safe-area-inset-bottom)); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .bg-custom { background-size: cover; background-position: center; background-attachment: fixed; }
+        .animate-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .shimmer { background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        /* Confetti Animation */
+        @keyframes pop { 0% { transform: scale(0); } 80% { transform: scale(1.1); } 100% { transform: scale(1); } }
+        .pop-in { animation: pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+    </style>
+</head>
+<body x-data="quizApp()" 
+      class="text-slate-800 min-h-screen flex flex-col relative bg-slate-50 transition-all duration-500"
+      :class="systemConfig.bgImage ? 'bg-custom' : ''"
+      :style="systemConfig.bgImage ? `background-image: url('${systemConfig.bgImage}');` : ''">
+
+    <noscript><div class="p-10 text-center text-red-600">لطفا جاوااسکریپت را فعال کنید.</div></noscript>
+
+    <!-- Background Music Player -->
+    <audio x-ref="bgMusic" loop class="hidden"></audio>
+
+    <!-- Toast Container -->
+    <div class="fixed top-4 left-0 right-0 z-[70] px-4 pointer-events-none flex flex-col gap-2 items-center" x-cloak>
+        <template x-for="toast in toasts" :key="toast.id">
+            <div class="bg-slate-900/90 backdrop-blur text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 text-xs transform transition-all duration-300 animate-[slideDown_0.3s_ease-out]" x-show="toast.visible">
+                <span x-text="toast.icon"></span>
+                <span x-text="toast.message"></span>
+            </div>
+        </template>
+    </div>
+
+    <!-- Bottom Navigation Bar -->
+    <div x-show="registered && !view.startsWith('admin') && !['loading', 'take_quiz', 'register'].includes(view)" 
+         class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-slate-200 flex justify-around items-center px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] z-40 transition-transform duration-300 shadow-[0_-5px_15px_rgba(0,0,0,0.05)]"
+         x-cloak>
+        <button @click="navigateTo('landing')" class="flex flex-col items-center gap-1 p-2 rounded-xl transition w-20" :class="view === 'landing' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'">
+            <i data-lucide="home" class="w-6 h-6" :class="view === 'landing' ? 'fill-current' : ''"></i>
+            <span class="text-[10px] font-bold">خانه</span>
+        </button>
+        <button @click="navigateTo('quiz_list')" class="flex flex-col items-center gap-1 p-2 rounded-xl transition w-20" :class="view === 'quiz_list' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'">
+            <i data-lucide="list-checks" class="w-6 h-6" :class="view === 'quiz_list' ? 'fill-current' : ''"></i>
+            <span class="text-[10px] font-bold">مسابقات</span>
+        </button>
+        <button @click="navigateTo('profile_view')" class="flex flex-col items-center gap-1 p-2 rounded-xl transition w-20 relative" :class="view === 'profile_view' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'">
+            <div x-show="unreadCount > 0" class="absolute top-1 right-3 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></div>
+            <i data-lucide="user" class="w-6 h-6" :class="view === 'profile_view' ? 'fill-current' : ''"></i>
+            <span class="text-[10px] font-bold">پروفایل</span>
+        </button>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 w-full max-w-lg mx-auto pb-safe relative z-10">
+
+        <!-- Loading -->
+        <template x-if="view === 'loading'">
+            <div class="space-y-4 pt-10 px-4">
+                <div class="h-32 w-full rounded-3xl shimmer"></div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="h-24 rounded-3xl shimmer"></div>
+                    <div class="h-24 rounded-3xl shimmer"></div>
+                </div>
+                <div class="text-center text-[10px] text-slate-400 mt-4">در حال دریافت اطلاعات...</div>
+            </div>
+        </template>
+
+        <!-- DASHBOARD -->
+        <template x-if="view === 'landing'">
+            <div class="animate-in pb-20">
+                <!-- Header -->
+                <div class="bg-slate-900 text-white pb-16 pt-8 px-6 rounded-b-[3rem] shadow-2xl relative overflow-hidden mb-[-2rem] z-0 bg-cover bg-center"
+                     :class="!systemConfig.headerImage ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : ''"
+                     :style="systemConfig.headerImage ? `background-image: url('${systemConfig.headerImage}');` : ''">
+                    <div x-show="systemConfig.headerImage" class="absolute inset-0 bg-black/50 backdrop-blur-[2px]"></div>
+                    <div x-show="!systemConfig.headerImage" class="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
+                    <div class="relative z-10 text-center mb-6">
+                         <h1 class="text-xl font-black tracking-tight drop-shadow-md" x-text="systemConfig.systemTitle || 'سامانه هوشمند مسابقات'"></h1>
+                         <p class="text-[11px] text-slate-200 mt-1 drop-shadow">خوش آمدید، <span x-text="displayName" class="font-bold text-white"></span></p>
+                    </div>
+                </div>
+
+                <div class="px-4 space-y-5 pt-10 relative z-10">
+                    <template x-if="systemConfig.announcement">
+                        <div class="bg-amber-50/95 backdrop-blur border border-amber-200 rounded-2xl p-4 flex gap-3 shadow-sm items-start">
+                             <div class="bg-amber-100 p-2 rounded-full text-amber-600 shrink-0"><i data-lucide="megaphone" class="w-5 h-5"></i></div>
+                             <div>
+                                 <h3 class="font-bold text-xs text-amber-800 mb-1">اطلاعیه</h3>
+                                 <p class="text-[11px] text-amber-700 leading-relaxed" x-text="systemConfig.announcement"></p>
+                             </div>
+                        </div>
+                    </template>
+
+                    <template x-if="isAdmin">
+                        <div @click="view = 'admin_dash'" class="bg-slate-800 text-white p-4 rounded-3xl shadow-lg flex items-center justify-between cursor-pointer border-t border-slate-700 group hover:bg-slate-750 transition">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-yellow-400 group-hover:scale-110 transition"><i data-lucide="shield" class="w-5 h-5"></i></div>
+                                <div>
+                                    <h2 class="font-bold text-sm">پنل مدیریت سیستم</h2>
+                                    <p class="text-[10px] text-slate-400">تنظیمات، مسابقات و کاربران</p>
+                                </div>
+                            </div>
+                            <i data-lucide="chevron-left" class="w-5 h-5 text-slate-500"></i>
+                        </div>
+                    </template>
+
+                    <!-- Pinned Quizzes -->
+                    <template x-if="pinnedQuizzes.length > 0">
+                        <div class="flex overflow-x-auto gap-3 pb-4 no-scrollbar -mx-4 px-4 snap-x">
+                            <template x-for="q in pinnedQuizzes" :key="q.id">
+                                <div @click="handleQuizClick(q)" class="snap-center shrink-0 w-72 bg-gradient-to-r from-pink-500 to-rose-600 text-white p-5 rounded-[2rem] shadow-xl shadow-pink-500/20 relative overflow-hidden cursor-pointer group hover:scale-[1.02] transition-transform duration-300">
+                                     <div class="absolute -right-6 -top-6 w-24 h-24 bg-white/20 rounded-full blur-xl group-hover:scale-150 transition-transform duration-700"></div>
+                                     <div class="relative z-10">
+                                        <div class="flex justify-between items-start mb-2">
+                                            <span class="bg-white/20 px-2 py-0.5 rounded-lg text-[10px] backdrop-blur font-bold flex items-center gap-1"><i data-lucide="pin" class="w-3 h-3"></i> ویژه</span>
+                                        </div>
+                                        <h2 class="font-black text-lg mb-1 truncate" x-text="q.title"></h2>
+                                        <p class="text-[11px] text-pink-100 line-clamp-2 mb-3" x-text="q.description"></p>
+                                        <div class="inline-flex items-center gap-1 bg-white text-pink-600 px-3 py-1.5 rounded-xl text-[10px] font-bold shadow-sm">
+                                            شرکت در مسابقه <i data-lucide="arrow-left" class="w-3 h-3"></i>
+                                        </div>
+                                     </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <div x-show="!registered" class="bg-white/90 backdrop-blur p-6 rounded-3xl shadow-sm text-center border border-slate-100">
+                         <div class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <i data-lucide="user-plus" class="w-8 h-8"></i>
+                         </div>
+                         <h3 class="font-bold text-sm">هنوز ثبت نام نکرده‌اید!</h3>
+                         <p class="text-[10px] text-slate-400 mb-4 mt-1">برای شرکت در مسابقات و مشاهده نتایج پروفایل خود را تکمیل کنید.</p>
+                         <button @click="navigateTo('register')" class="bg-blue-600 text-white w-full py-3 rounded-xl font-bold text-xs shadow-lg shadow-blue-200">تکمیل ثبت نام</button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- PROFILE VIEW -->
+        <template x-if="view === 'profile_view'">
+            <div class="animate-in pb-20 pt-6 px-4">
+                 <h2 class="font-bold text-xl mb-6 bg-white/50 backdrop-blur inline-block px-4 py-1 rounded-2xl">پروفایل من</h2>
+                 <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 relative overflow-hidden mb-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
+                             <span class="font-bold text-xl" x-text="userData.firstName?.[0] || '?'"></span>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-bold text-base" x-text="displayName"></h3>
+                            <p class="text-xs text-slate-400 mt-1" x-text="userData.phone || '---'"></p>
+                        </div>
+                        <button @click="navigateTo('edit_profile')" class="bg-slate-50 text-slate-600 p-2.5 rounded-xl hover:bg-slate-100 transition"><i data-lucide="edit-3" class="w-5 h-5"></i></button>
+                    </div>
+                 </div>
+                 <!-- Messages -->
+                 <div class="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="p-4 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
+                        <h3 class="font-bold text-sm flex items-center gap-2"><i data-lucide="mail" class="w-4 h-4 text-slate-400"></i> صندوق پیام</h3>
+                        <span x-show="unreadCount > 0" class="text-[9px] bg-red-500 text-white px-2 py-0.5 rounded-full" x-text="unreadCount"></span>
+                    </div>
+                    <div class="max-h-60 overflow-y-auto">
+                        <template x-for="msg in userData.messages || []" :key="msg.id">
+                            <div class="p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+                                <div class="flex justify-between items-start mb-1">
+                                    <span class="text-[10px] text-slate-400" x-text="new Date(msg.date).toLocaleDateString('fa-IR')"></span>
+                                    <div class="w-2 h-2 rounded-full bg-blue-500" x-show="!msg.read"></div>
+                                </div>
+                                <p class="text-xs text-slate-700 leading-relaxed" x-text="msg.text"></p>
+                            </div>
+                        </template>
+                        <div x-show="!userData.messages?.length" class="p-8 text-center text-xs text-slate-300">پیامی وجود ندارد</div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- REGISTER / EDIT -->
+        <template x-if="view === 'register' || view === 'edit_profile'">
+             <div class="space-y-5 animate-in px-4 pt-4 pb-10">
+                <div class="flex items-center gap-2 mb-4">
+                    <button @click="navigateTo(view === 'edit_profile' ? 'profile_view' : 'landing')" class="bg-white p-2 rounded-xl text-slate-400 shadow-sm"><i data-lucide="arrow-right" class="w-5 h-5"></i></button>
+                    <h2 class="font-bold text-lg" x-text="view === 'register' ? 'ثبت‌نام' : 'ویرایش پروفایل'"></h2>
+                </div>
+                <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div>
+                            <label class="text-[9px] text-slate-400 mr-2 mb-1 block">نام</label>
+                            <input type="text" x-model="regForm.firstName" class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700">
+                        </div>
+                        <div>
+                            <label class="text-[9px] text-slate-400 mr-2 mb-1 block">نام خانوادگی</label>
+                            <input type="text" x-model="regForm.lastName" class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700">
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="text-[9px] text-slate-400 mr-2 mb-1 block">شماره موبایل</label>
+                        <input type="tel" x-model="regForm.phone" class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-center ltr placeholder-slate-300" placeholder="09xxxxxxxxx">
+                    </div>
+                    <div class="mb-6">
+                         <label class="text-[9px] text-slate-400 mr-2 mb-1 block">تاریخ تولد</label>
+                         <div class="grid grid-cols-3 gap-2">
+                             <select x-model="regForm.birthDate.day" class="p-3 rounded-2xl bg-slate-50 border-0 text-xs text-center font-bold">
+                                 <option value="">روز</option>
+                                 <template x-for="d in 31"><option :value="d" x-text="d"></option></template>
+                             </select>
+                             <select x-model="regForm.birthDate.month" class="p-3 rounded-2xl bg-slate-50 border-0 text-xs text-center font-bold">
+                                 <option value="">ماه</option>
+                                 <template x-for="(m, i) in months"><option :value="i+1" x-text="m"></option></template>
+                             </select>
+                             <select x-model="regForm.birthDate.year" class="p-3 rounded-2xl bg-slate-50 border-0 text-xs text-center font-bold">
+                                 <option value="">سال</option>
+                                 <template x-for="y in years"><option :value="y" x-text="y"></option></template>
+                             </select>
+                         </div>
+                    </div>
+                     <button @click="updateProfile" class="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-bold text-xs hover:bg-slate-800 transition-colors shadow-lg shadow-slate-200">
+                        <span x-text="view === 'register' ? 'ثبت نام و ورود' : 'ذخیره تغییرات'"></span>
+                    </button>
+                </div>
+             </div>
+        </template>
+
+        <!-- QUIZ LIST (History Score Hidden) -->
+        <template x-if="view === 'quiz_list'">
+            <div class="space-y-4 animate-in px-4 pt-4 pb-20">
+                <div class="sticky top-0 bg-white/80 backdrop-blur z-10 pb-2 flex items-center justify-between">
+                    <h2 class="font-bold text-xl">مسابقات</h2>
+                    <div class="w-8"></div> 
+                </div>
+                <div class="bg-white p-1 rounded-2xl flex shadow-sm border border-slate-200">
+                    <button @click="quizTab = 'active'" class="flex-1 py-2 text-xs font-bold rounded-xl transition-all" :class="quizTab === 'active' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500'">در حال برگزاری</button>
+                    <button @click="quizTab = 'history'" class="flex-1 py-2 text-xs font-bold rounded-xl transition-all" :class="quizTab === 'history' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500'">سوابق من</button>
+                </div>
+                <div class="space-y-3">
+                    <template x-for="q in filteredQuizzes" :key="q.id">
+                        <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 relative overflow-hidden group hover:shadow-md transition-shadow">
+                            <!-- Status Badge -->
+                            <div class="absolute top-4 left-4">
+                                <span class="px-2 py-1 rounded-lg text-[10px] font-bold"
+                                      :class="{
+                                        'bg-green-100 text-green-700': q.userStatus === 'active',
+                                        'bg-slate-100 text-slate-500': q.userStatus === 'expired',
+                                        'bg-blue-100 text-blue-700': q.userStatus === 'submitted'
+                                      }"
+                                      x-text="getStatusText(q)"></span>
+                            </div>
+
+                            <h3 class="font-bold text-base mt-1 text-slate-800" x-text="q.title"></h3>
+                            <p class="text-[11px] text-slate-400 mt-2 line-clamp-2 leading-relaxed" x-text="q.description"></p>
+                            
+                            <!-- History View: Logic Changes -->
+                            <template x-if="quizTab === 'history'">
+                                <div class="mt-4">
+                                    <!-- Full Score Message -->
+                                    <template x-if="q.lastScore === q.totalPoints">
+                                        <div class="p-3 rounded-2xl bg-green-50 border border-green-100 text-center">
+                                            <i data-lucide="party-popper" class="w-5 h-5 text-green-600 mx-auto mb-1"></i>
+                                            <p class="text-[10px] text-green-700 font-bold leading-relaxed">
+                                                شما به همه سوالات پاسخ درست داده‌اید و در قرعه‌کشی شرکت خواهید کرد.
+                                            </p>
+                                        </div>
+                                    </template>
+                                    <!-- Regular Registration Message (Hide Score) -->
+                                    <template x-if="q.lastScore !== q.totalPoints">
+                                        <div class="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-center">
+                                            <span class="text-[10px] text-slate-500 font-bold">شما به همه سوالات پاسخ صحیح نداده‌اید و در قرعه کشی شرکت نخواهید کرد.</span>
+                                        </div>
+                                    </template>
+
+                                    <!-- Lottery Result Button (If Lottery Done) -->
+                                    <template x-if="q.lotteryDone">
+                                        <button @click="showLotteryResult(q)" class="w-full mt-2 bg-indigo-600 text-white py-3 rounded-2xl font-bold text-xs shadow-lg shadow-indigo-200 animate-pulse">
+                                            مشاهده نتیجه قرعه‌کشی
+                                        </button>
+                                    </template>
+                                </div>
+                            </template>
+
+                            <button @click="handleQuizClick(q)" 
+                                    class="w-full mt-4 py-3 rounded-2xl font-bold text-xs transition-colors flex items-center justify-center gap-2"
+                                    :class="q.userStatus === 'active' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 hover:bg-blue-700' : 'bg-slate-100 text-slate-400 cursor-default'"
+                                    x-show="quizTab === 'active' && q.userStatus === 'active'">
+                                <span>شروع مسابقه</span> <i data-lucide="play" class="w-3 h-3 fill-current"></i>
+                            </button>
+                        </div>
+                    </template>
+                     <div x-show="filteredQuizzes.length === 0" class="text-center py-12">
+                        <p class="text-sm font-bold text-slate-500">موردی یافت نشد</p>
+                    </div>
+                </div>
+            </div>
+        </template>
+        
+        <!-- QUIZ TAKING -->
+        <template x-if="view === 'take_quiz'">
+            <div class="fixed inset-0 bg-white z-[60] flex flex-col">
+                <div class="p-4 flex justify-between items-center bg-white z-10 border-b border-slate-100">
+                    <button @click="askConfirm('exit')" class="text-slate-400 hover:text-red-500 transition-colors p-2 bg-slate-50 rounded-xl"><i data-lucide="x" class="w-5 h-5"></i></button>
+                    <div class="flex flex-col items-center">
+                        <span class="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">زمان باقی‌مانده</span>
+                        <div class="font-mono font-bold text-lg tracking-tight bg-slate-100 px-3 py-0.5 rounded-lg text-blue-600" x-text="activeQuiz.noTimer ? '∞' : formatTime(timeLeft)"></div>
+                    </div>
+                    <div class="w-10"></div>
+                </div>
+                <div class="flex-1 overflow-y-auto p-4 space-y-8 bg-slate-50 pb-24">
+                    <template x-for="(q, idx) in activeQuiz?.questions" :key="idx">
+                        <div class="bg-white p-6 rounded-[2rem] shadow-sm relative overflow-visible border border-slate-100 group">
+                            <div class="absolute -top-3 right-6 bg-blue-600 text-white text-[10px] px-3 py-1 rounded-full font-bold shadow-lg shadow-blue-200" x-text="'سوال ' + (idx+1)"></div>
+                            <p class="font-bold text-sm leading-7 text-slate-800 mt-2 mb-5 text-justify" x-text="q.text"></p>
+                            <template x-if="q.type === 'choice'">
+                                <div class="space-y-2.5">
+                                    <template x-for="(opt, oIdx) in q.options" :key="oIdx">
+                                        <div @click="answers[idx] = (oIdx+1)" 
+                                             class="p-4 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 active:scale-[0.98]"
+                                             :class="answers[idx] == (oIdx+1) ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500 shadow-sm' : 'border-slate-100 bg-white hover:border-slate-300'">
+                                            <div class="w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-colors" :class="answers[idx] == (oIdx+1) ? 'border-blue-500 bg-blue-500' : 'border-slate-300'">
+                                                <i x-show="answers[idx] == (oIdx+1)" data-lucide="check" class="w-3 h-3 text-white"></i>
+                                            </div>
+                                            <span class="text-xs font-medium text-slate-700" x-text="opt"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                            <template x-if="q.type === 'text'">
+                                <div><textarea x-model="answers[idx]" placeholder="پاسخ تشریحی..." class="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white text-xs h-32 resize-none outline-none leading-relaxed"></textarea></div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+                <div class="absolute bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur border-t border-slate-100 pb-safe">
+                    <button @click="askConfirm('submit')" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-xl shadow-blue-200 text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
+                        ثبت نهایی پاسخ‌نامه <i data-lucide="check-circle" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+        </template>
+
+        <!-- ADMIN DASHBOARD -->
+        <template x-if="view === 'admin_dash'">
+            <div class="fixed inset-0 bg-slate-50 z-50 overflow-y-auto pb-10">
+                <div class="bg-slate-900 text-white p-6 pb-12 rounded-b-[2.5rem] shadow-2xl">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="font-bold text-lg">مدیریت سامانه</h2>
+                        <button @click="view = 'landing'" class="bg-white/10 px-3 py-1.5 rounded-xl text-xs backdrop-blur hover:bg-white/20 transition">خروج</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-white/10 p-4 rounded-2xl backdrop-blur border border-white/5">
+                            <span class="text-white/60 text-[10px]">کاربران</span>
+                            <div class="text-2xl font-bold mt-1" x-text="adminMeta.totalUsers || 0"></div>
+                        </div>
+                        <div class="bg-white/10 p-4 rounded-2xl backdrop-blur border border-white/5">
+                            <span class="text-white/60 text-[10px]">مسابقات</span>
+                            <div class="text-2xl font-bold mt-1" x-text="adminMeta.totalQuizzes || 0"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="px-4 -mt-8 grid gap-3 relative z-10 pb-10">
+                    <button @click="resetNewQuiz()" class="bg-white p-5 rounded-3xl shadow-lg border border-slate-100 flex items-center justify-between group hover:translate-y-[-2px] transition-transform">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center"><i data-lucide="plus" class="w-6 h-6"></i></div>
+                            <div class="text-right">
+                                <h3 class="font-bold text-sm">ایجاد مسابقه</h3>
+                                <p class="text-[10px] text-slate-400">طراحی مسابقه جدید</p>
+                            </div>
+                        </div>
+                        <i data-lucide="chevron-left" class="w-5 h-5 text-slate-300"></i>
+                    </button>
+                    <button @click="openAdminQuizList()" class="bg-white p-5 rounded-3xl shadow-lg border border-slate-100 flex items-center justify-between group hover:translate-y-[-2px] transition-transform">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center"><i data-lucide="list" class="w-6 h-6"></i></div>
+                            <div class="text-right">
+                                <h3 class="font-bold text-sm">مدیریت مسابقات</h3>
+                                <p class="text-[10px] text-slate-400">نتایج، تصحیح و پین</p>
+                            </div>
+                        </div>
+                        <i data-lucide="chevron-left" class="w-5 h-5 text-slate-300"></i>
+                    </button>
+                    <button @click="openConfigModal()" class="bg-white p-5 rounded-3xl shadow-lg border border-slate-100 flex items-center justify-between group hover:translate-y-[-2px] transition-transform">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center"><i data-lucide="palette" class="w-6 h-6"></i></div>
+                            <div class="text-right">
+                                <h3 class="font-bold text-sm">تنظیمات ظاهری</h3>
+                                <p class="text-[10px] text-slate-400">هدر، بکگراند و اعلانات</p>
+                            </div>
+                        </div>
+                        <i data-lucide="chevron-left" class="w-5 h-5 text-slate-300"></i>
+                    </button>
+                    <button @click="fetchUsers()" class="bg-white p-5 rounded-3xl shadow-lg border border-slate-100 flex items-center justify-between group hover:translate-y-[-2px] transition-transform">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center"><i data-lucide="users" class="w-6 h-6"></i></div>
+                            <div class="text-right">
+                                <h3 class="font-bold text-sm">کاربران</h3>
+                                <p class="text-[10px] text-slate-400">مدیریت و پیام</p>
+                            </div>
+                        </div>
+                        <i data-lucide="chevron-left" class="w-5 h-5 text-slate-300"></i>
+                    </button>
+                </div>
+            </div>
+        </template>
+        
+        <!-- ADMIN: QUIZ LIST (Pin support + Link) -->
+        <template x-if="view === 'admin_quiz_list'">
+            <div class="fixed inset-0 bg-slate-50 z-50 overflow-y-auto pt-20 px-4">
+                <div class="fixed top-0 left-0 right-0 bg-white p-4 z-10 border-b flex justify-between items-center shadow-sm">
+                    <h2 class="font-bold">مدیریت مسابقات</h2>
+                    <button @click="view = 'admin_dash'" class="text-slate-400 bg-slate-50 p-2 rounded-xl"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>
+                <div class="space-y-3 pb-10">
+                     <template x-if="!quizzes.length">
+                        <div class="text-center py-10 text-slate-400 text-xs">مسابقه‌ای یافت نشد.</div>
+                    </template>
+                    <template x-for="q in quizzes" :key="q.id">
+                        <div class="bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
+                            <div class="flex justify-between items-start mb-3">
+                                <h3 class="font-bold text-sm" x-text="q.title"></h3>
+                                <div class="flex gap-2">
+                                     <!-- Copy Link Button -->
+                                     <button @click="copyQuizLink(q.id)" class="p-1.5 rounded-lg transition-colors bg-blue-50 text-blue-600 hover:bg-blue-100" title="کپی لینک مسابقه">
+                                         <i data-lucide="link" class="w-4 h-4"></i>
+                                     </button>
+                                     <!-- Pin Button -->
+                                     <button @click="togglePromote(q)" class="p-1.5 rounded-lg transition-colors" :class="q.promoted ? 'bg-pink-100 text-pink-600' : 'bg-slate-100 text-slate-300'">
+                                         <i data-lucide="pin" class="w-4 h-4" :fill="q.promoted ? 'currentColor' : 'none'"></i>
+                                     </button>
+                                     <span class="text-[10px] bg-slate-100 px-2 py-1 rounded text-slate-500 self-center" x-text="q.id.slice(-4)"></span>
+                                </div>
+                            </div>
+                            <div class="flex gap-2">
+                                <button @click="editQuiz(q)" class="flex-1 bg-slate-50 py-2.5 rounded-xl text-[10px] font-bold text-slate-600 hover:bg-slate-100 transition">ویرایش</button>
+                                <button @click="loadStats(q.id)" class="flex-1 bg-blue-50 py-2.5 rounded-xl text-[10px] font-bold text-blue-600 hover:bg-blue-100 transition">نتایج و قرعه‌کشی</button>
+                                <button @click="askConfirm('delete_quiz', q.id)" class="px-3 bg-red-50 rounded-xl text-red-500 hover:bg-red-100 transition"><i data-lucide="trash" class="w-4 h-4"></i></button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+        
+<!-- ADMIN: STATS & LOTTERY (Save Support) -->
+<template x-if="view === 'admin_stats_view'">
+    <div class="fixed inset-0 bg-white z-50 overflow-y-auto">
+        <div class="p-4 border-b flex justify-between items-center sticky top-0 bg-white z-10 shadow-sm">
+            <h2 class="font-bold text-sm">نتایج و قرعه‌کشی</h2>
+            <button @click="view = 'admin_quiz_list'" class="text-slate-400"><i data-lucide="arrow-right" class="w-6 h-6"></i></button>
+        </div>
+        <div class="p-4 space-y-6">
+            <!-- آمار کلی -->
+            <div class="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-6 rounded-[2rem] shadow-lg">
+                <h3 class="font-bold text-base mb-4 flex items-center gap-2">
+                    <i data-lucide="bar-chart" class="w-5 h-5"></i> آمار کلی
+                </h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-white/10 p-4 rounded-2xl backdrop-blur border border-white/5">
+                        <div class="flex items-center gap-3 mb-2">
+                            <div class="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center">
+                                <i data-lucide="users" class="w-5 h-5 text-blue-300"></i>
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-slate-300 block">شرکت کنندگان</span>
+                                <div class="text-2xl font-bold mt-1" x-text="stats.participants.length || 0"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white/10 p-4 rounded-2xl backdrop-blur border border-white/5">
+                        <div class="flex items-center gap-3 mb-2">
+                            <div class="w-10 h-10 bg-green-500/20 rounded-xl flex items-center justify-center">
+                                <i data-lucide="trophy" class="w-5 h-5 text-green-300"></i>
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-slate-300 block">پاسخ کامل</span>
+                                <div class="text-2xl font-bold mt-1" x-text="fullScoreCount"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 text-xs text-slate-300">
+                    <span x-text="'نسبت پاسخ کامل: ' + (stats.participants.length > 0 ? Math.round((fullScoreCount / stats.participants.length) * 100) : 0) + '%'"></span>
+                </div>
+            </div>
+
+            <!-- قرعه‌کشی -->
+            <div class="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6 rounded-[2rem] shadow-lg relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                <h3 class="font-bold text-base mb-4 flex items-center gap-2 relative z-10">
+                    <i data-lucide="gift" class="w-5 h-5"></i> قرعه‌کشی هوشمند
+                </h3>
+                
+                <!-- اطلاعات قرعه‌کشی -->
+                <div class="mb-6 bg-white/10 p-4 rounded-2xl backdrop-blur border border-white/20 relative z-10">
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <span class="text-[10px] text-indigo-200 block mb-1">شرکت کنندگان</span>
+                            <div class="text-lg font-bold" x-text="stats.participants.length || 0"></div>
+                        </div>
+                        <div>
+                            <span class="text-[10px] text-indigo-200 block mb-1">پاسخ کامل</span>
+                            <div class="text-lg font-bold" x-text="fullScoreCount"></div>
+                        </div>
+                    </div>
+                    <div class="text-[11px] text-indigo-200">
+                        <span x-show="fullScoreCount === 0" class="text-amber-200">⚠️ هیچ کس پاسخ کامل نداده است. قرعه‌کشی غیرفعال است.</span>
+                        <span x-show="fullScoreCount > 0 && fullScoreCount < lotteryCount" class="text-amber-200">⚠️ تعداد پاسخ کامل کمتر از تعداد برندگان درخواستی است.</span>
+                        <span x-show="fullScoreCount > 0 && fullScoreCount >= lotteryCount">✅ قرعه‌کشی از بین <span x-text="fullScoreCount" class="font-bold"></span> نفر امکان‌پذیر است.</span>
+                    </div>
+                </div>
+                
+                <div class="flex gap-3 mb-4 relative z-10">
+                    <div class="flex-1">
+                        <label class="text-[9px] text-indigo-200 block mb-1">تعداد برندگان</label>
+                        <input type="number" x-model="lotteryCount" 
+                               :max="fullScoreCount" 
+                               class="w-full bg-white/20 border border-white/30 rounded-xl text-center font-bold text-white placeholder-white/50 py-2"
+                               :class="fullScoreCount === 0 ? 'opacity-50 cursor-not-allowed' : ''"
+                               :disabled="fullScoreCount === 0">
+                    </div>
+                    <button @click="runLottery" 
+                            class="flex-[2] bg-white text-indigo-600 rounded-xl text-sm font-bold shadow-md hover:bg-indigo-50 transition mt-auto h-10 disabled:opacity-50 disabled:cursor-not-allowed"
+                            :disabled="fullScoreCount === 0">
+                        اجرای قرعه‌کشی
+                    </button>
+                </div>
+                
+                <!-- لیست برندگان -->
+                <div x-show="winners.length > 0" class="mt-4 bg-white/10 p-4 rounded-2xl backdrop-blur border border-white/20 relative z-10">
+                    <div class="flex justify-between items-center mb-3 border-b border-white/10 pb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] opacity-90 font-bold">🎉 برندگان (پیش‌نویس)</span>
+                            <span class="text-[9px] bg-white/20 px-2 py-0.5 rounded-full" x-text="winners.length + ' نفر'"></span>
+                        </div>
+                        <button @click="saveLotteryResults" class="text-[10px] bg-green-500 text-white px-3 py-1.5 rounded-lg font-bold shadow-sm hover:bg-green-600 transition">
+                            ثبت نهایی برندگان
+                        </button>
+                    </div>
+                    <div class="space-y-2 max-h-40 overflow-y-auto pr-1">
+                        <template x-for="(w, idx) in winners" :key="idx">
+                            <div class="flex justify-between items-center text-[11px] bg-white/10 p-2 rounded-xl hover:bg-white/15 transition-colors">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-xs w-5 text-center" x-text="idx+1"></span>
+                                    <span x-text="w.userInfo.firstName + ' ' + w.userInfo.lastName"></span>
+                                </div>
+                                <span class="font-mono opacity-70 text-[10px]" x-text="w.userInfo.phone || '---'"></span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="text-[10px] text-indigo-200 mt-3 text-center" x-show="winners.length > 0">
+                        از بین <span x-text="fullScoreCount" class="font-bold"></span> نفر با پاسخ کامل
+                    </div>
+                </div>
+
+                <!-- Reset Lottery Button -->
+                <template x-if="stats.winners && stats.winners.length > 0">
+                    <div class="mt-4 relative z-10">
+                        <button @click="resetLottery" class="w-full bg-red-500/20 border border-red-500/30 text-white py-2 rounded-xl text-xs font-bold hover:bg-red-500/30 transition flex items-center justify-center gap-2">
+                            <i data-lucide="refresh-cw" class="w-3 h-3"></i> لغو قرعه‌کشی و بازنشانی
+                        </button>
+                    </div>
+                </template>
+                
+                <!-- دکمه خروجی CSV -->
+                <div class="mt-4 relative z-10">
+                    <button @click="exportParticipants" 
+                            class="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl text-xs font-bold shadow-md transition-colors flex items-center justify-center gap-2">
+                        <i data-lucide="download" class="w-4 h-4"></i> خروجی CSV نتایج
+                    </button>
+                </div>
+            </div>
+            
+            <!-- لیست شرکت کنندگان -->
+            <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-sm flex items-center gap-2">
+                        <i data-lucide="list" class="w-4 h-4 text-slate-400"></i> لیست شرکت کنندگان
+                    </h3>
+                    <span class="text-[10px] bg-slate-100 px-2 py-1 rounded text-slate-600" x-text="stats.participants.length + ' نفر'"></span>
+                </div>
+                
+                <div class="space-y-3 max-h-60 overflow-y-auto pr-2">
+                    <template x-for="(p, idx) in stats.participants" :key="idx">
+                        <div class="flex items-center justify-between p-3 rounded-2xl border border-slate-100 hover:bg-slate-50 transition-colors"
+                             :class="p.score === p.total ? 'bg-green-50 border-green-100' : ''">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl flex items-center justify-center text-xs font-bold"
+                                     :class="p.score === p.total ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'">
+                                    <span x-text="(idx+1)"></span>
+                                </div>
+                                <div>
+                                    <h4 class="text-xs font-bold text-slate-700" 
+                                        x-text="p.userInfo.firstName + ' ' + p.userInfo.lastName"></h4>
+                                    <p class="text-[10px] text-slate-400 mt-0.5" x-text="p.userInfo.phone || '---'"></p>
+                                </div>
+                            </div>
+                            <div class="text-right flex items-center gap-3">
+                                <div>
+                                    <div class="text-xs font-bold" 
+                                         :class="p.score === p.total ? 'text-green-600' : 'text-slate-600'">
+                                        <span x-text="p.score"></span>/<span x-text="p.total"></span>
+                                    </div>
+                                    <div class="text-[9px] text-slate-400 mt-0.5" 
+                                         x-text="new Date(p.submittedAt).toLocaleDateString('fa-IR')"></div>
+                                </div>
+                                <!-- Delete Submission Button -->
+                                <button @click="deleteSubmission(p.userId)" class="p-2 text-red-400 hover:bg-red-50 rounded-lg transition" title="حذف پاسخ">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="!stats.participants.length" class="text-center py-8 text-slate-300 text-xs">
+                        شرکت کننده‌ای وجود ندارد
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+        <!-- ADMIN: CONFIGURATION -->
+        <template x-if="view === 'admin_config'">
+            <div class="fixed inset-0 bg-white z-50 overflow-y-auto">
+                <div class="p-4 border-b flex justify-between items-center sticky top-0 bg-white z-10 shadow-sm">
+                    <h2 class="font-bold text-sm">تنظیمات ظاهری</h2>
+                    <button @click="view = 'admin_dash'" class="text-slate-400"><i data-lucide="arrow-right" class="w-6 h-6"></i></button>
+                </div>
+                <div class="p-4 space-y-5">
+                    <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="text-[10px] text-slate-400 mb-1 block">عنوان سیستم</label>
+                                <input type="text" x-model="configForm.systemTitle" class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 mb-1 block">اعلان عمومی</label>
+                                <textarea x-model="configForm.announcement" rows="3" class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700 resize-none"></textarea>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 mb-1 block">آدرس تصویر هدر (اختیاری)</label>
+                                <input type="text" x-model="configForm.headerImage" placeholder="https://..." class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 mb-1 block">آدرس تصویر پس‌زمینه (اختیاری)</label>
+                                <input type="text" x-model="configForm.bgImage" placeholder="https://..." class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700">
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6 border-t pt-6">
+                            <h4 class="font-bold text-xs text-slate-800 mb-4 flex items-center gap-2">
+                                <i data-lucide="link" class="w-4 h-4"></i>
+                                تنظیمات لینک‌دهی (برای ساخت لینک اختصاصی)
+                            </h4>
+                             <div>
+                                <label class="text-[10px] text-slate-400 mb-1 block">آیدی بات ایتا (بدون @)</label>
+                                <input type="text" x-model="configForm.botUsername" placeholder="مثال: MyQuizBot" class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700 ltr text-left">
+                                <p class="text-[9px] text-slate-400 mt-1">جهت ساخت لینک مستقیم ورود به مسابقه استفاده می‌شود.</p>
+                            </div>
+                        </div>
+
+                        <div class="mt-6 border-t pt-6">
+                            <h4 class="font-bold text-xs text-slate-800 mb-4 flex items-center gap-2">
+                                <i data-lucide="lock" class="w-4 h-4"></i>
+                                قفل ورودی سامانه (عضویت اجباری)
+                            </h4>
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-2">
+                                    <input type="checkbox" id="globalChannelReq" x-model="configForm.globalChannelReq" class="w-4 h-4 rounded border-slate-300">
+                                    <label for="globalChannelReq" class="text-xs font-bold text-slate-600">فعال‌سازی قفل ورود به سامانه</label>
+                                </div>
+                                <div x-show="configForm.globalChannelReq" class="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                    <div>
+                                        <label class="text-[10px] text-slate-400 mb-1 block">لینک کانال/گروه</label>
+                                        <input type="text" x-model="configForm.globalChannelLink" placeholder="https://eitaa.com/..." class="w-full p-2.5 rounded-xl bg-white border border-slate-200 text-xs ltr">
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] text-slate-400 mb-1 block">متن پیام/دکمه</label>
+                                        <input type="text" x-model="configForm.globalChannelText" placeholder="مثال: عضویت در کانال رسمی" class="w-full p-2.5 rounded-xl bg-white border border-slate-200 text-xs">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button @click="saveConfig" class="w-full mt-6 bg-slate-900 text-white py-3.5 rounded-2xl font-bold text-xs hover:bg-slate-800 transition-colors shadow-lg shadow-slate-200">
+                            ذخیره تنظیمات
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- ADMIN: USERS LIST -->
+        <template x-if="view === 'admin_users'">
+            <div class="fixed inset-0 bg-slate-50 z-50 overflow-y-auto pt-20 px-4">
+                <div class="fixed top-0 left-0 right-0 bg-white p-4 z-10 border-b flex justify-between items-center shadow-sm">
+                    <h2 class="font-bold">مدیریت کاربران</h2>
+                    <button @click="view = 'admin_dash'" class="text-slate-400 bg-slate-50 p-2 rounded-xl"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>
+                <div class="mb-4 sticky top-16 z-10 bg-slate-50 pt-2">
+                    <input type="text" x-model="userSearch" placeholder="جستجوی کاربر..." class="w-full p-3 rounded-2xl bg-white border border-slate-200 text-xs">
+                </div>
+                <div class="space-y-3 pb-10">
+                    <button @click="exportAllUsers" class="w-full bg-emerald-600 text-white py-3 rounded-2xl text-xs font-bold shadow-lg shadow-emerald-200 flex items-center justify-center gap-2">
+                        <i data-lucide="download" class="w-4 h-4"></i> خروجی CSV
+                    </button>
+                    
+                    <template x-for="user in filteredUserList" :key="user.id">
+                        <div class="bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
+                            <div class="flex items-center gap-3 mb-3">
+                                <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg">
+                                    <span class="font-bold" x-text="user.firstName?.[0] || '?'"></span>
+                                </div>
+                                <div class="flex-1">
+                                    <h3 class="font-bold text-sm" x-text="(user.firstName || '') + ' ' + (user.lastName || '')"></h3>
+                                    <p class="text-[10px] text-slate-400 mt-0.5" x-text="user.phone || '---'"></p>
+                                </div>
+                                <button @click="manageUser(user)" class="bg-slate-100 text-slate-600 p-2 rounded-xl hover:bg-slate-200 transition">
+                                    <i data-lucide="more-vertical" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                            <div class="flex gap-2">
+                                <button @click="sendMessageToUser([user.id])" class="flex-1 bg-blue-50 py-2 rounded-xl text-[10px] font-bold text-blue-600 hover:bg-blue-100 transition">ارسال پیام</button>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="filteredUserList.length === 0" class="text-center py-10 text-slate-400 text-xs">
+                        کاربری یافت نشد.
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- ADMIN: USER DETAIL -->
+        <template x-if="view === 'admin_user_detail'">
+            <div class="fixed inset-0 bg-white z-50 overflow-y-auto">
+                <div class="p-4 border-b flex justify-between items-center sticky top-0 bg-white z-10 shadow-sm">
+                    <button @click="view = 'admin_users'" class="text-slate-400"><i data-lucide="arrow-right" class="w-6 h-6"></i></button>
+                    <h2 class="font-bold text-sm">جزئیات کاربر</h2>
+                    <div class="w-6"></div>
+                </div>
+                <div class="p-6 space-y-6">
+                    <div class="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-6 rounded-[2rem] shadow-lg relative overflow-hidden">
+                        <div class="flex items-center gap-4">
+                            <div class="w-16 h-16 bg-white/10 backdrop-blur rounded-2xl flex items-center justify-center text-2xl">
+                                <span x-text="targetUser.firstName?.[0] || '?'"></span>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-lg" x-text="(targetUser.firstName || '') + ' ' + (targetUser.lastName || '')"></h3>
+                                <p class="text-xs text-slate-300 mt-1" x-text="targetUser.phone || '---'"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Send Message -->
+                    <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                        <h4 class="font-bold text-sm mb-3">ارسال پیام به کاربر</h4>
+                        <textarea x-model="messageText" placeholder="متن پیام..." rows="3" class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs mb-3 resize-none"></textarea>
+                        <button @click="sendMessageToUser()" class="w-full bg-blue-600 text-white py-3 rounded-2xl text-xs font-bold shadow-lg shadow-blue-200">ارسال پیام</button>
+                    </div>
+
+                    <!-- User Messages -->
+                    <div class="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div class="p-4 border-b border-slate-50 bg-slate-50/50">
+                            <h4 class="font-bold text-sm">پیام‌های کاربر</h4>
+                        </div>
+                        <div class="max-h-60 overflow-y-auto">
+                            <template x-if="targetUser.messages?.length">
+                                <template x-for="msg in targetUser.messages" :key="msg.id">
+                                    <div class="p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+                                        <div class="flex justify-between items-start mb-1">
+                                            <span class="text-[10px] text-slate-400" x-text="new Date(msg.date).toLocaleDateString('fa-IR')"></span>
+                                            <button @click="deleteMessage(msg.id)" class="text-red-400 hover:text-red-600 p-1">
+                                                <i data-lucide="trash" class="w-3 h-3"></i>
+                                            </button>
+                                        </div>
+                                        <p class="text-xs text-slate-700 leading-relaxed" x-text="msg.text"></p>
+                                        <div class="w-2 h-2 rounded-full bg-blue-500 mt-2" x-show="!msg.read"></div>
+                                    </div>
+                                </template>
+                            </template>
+                            <div x-show="!targetUser.messages?.length" class="p-8 text-center text-xs text-slate-300">
+                                پیامی وجود ندارد
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- ADMIN: CREATE/EDIT QUIZ -->
+        <template x-if="view === 'admin_create'">
+            <div class="fixed inset-0 bg-white z-50 overflow-y-auto">
+                <div class="p-4 border-b flex justify-between items-center sticky top-0 bg-white z-10 shadow-sm">
+                    <h2 class="font-bold text-sm" x-text="newQuiz.id ? 'ویرایش مسابقه' : 'ایجاد مسابقه جدید'"></h2>
+                    <button @click="view = 'admin_dash'" class="text-slate-400"><i data-lucide="arrow-right" class="w-6 h-6"></i></button>
+                </div>
+                <div class="p-4 space-y-5 pb-20">
+                    <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                        <h4 class="font-bold text-sm mb-4">اطلاعات کلی</h4>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="text-[10px] text-slate-400 mb-1 block">عنوان مسابقه</label>
+                                <input type="text" x-model="newQuiz.title" class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 mb-1 block">توضیحات</label>
+                                <textarea x-model="newQuiz.description" rows="2" class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700 resize-none"></textarea>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-[10px] text-slate-400 mb-1 block">زمان شروع</label>
+                                    <input type="datetime-local" x-model="newQuiz.startTime" class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-400 mb-1 block">زمان پایان</label>
+                                    <input type="datetime-local" x-model="newQuiz.endTime" class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-[10px] text-slate-400 mb-1 block">زمان (دقیقه)</label>
+                                    <input type="number" x-model="newQuiz.timeLimit" min="1" class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700">
+                                </div>
+                                <div class="flex items-center gap-2 mt-6">
+                                    <input type="checkbox" id="noTimer" x-model="newQuiz.noTimer" class="w-4 h-4">
+                                    <label for="noTimer" class="text-xs text-slate-600">زمان نامحدود</label>
+                                </div>
+                            </div>
+
+                            <!-- Music Link Field -->
+                            <div>
+                                <label class="text-[10px] text-slate-400 mb-1 block">لینک آهنگ زمینه (اختیاری)</label>
+                                <input type="text" x-model="newQuiz.musicUrl" placeholder="https://..." class="w-full p-3 rounded-2xl bg-slate-50 border-0 text-xs font-bold text-slate-700 ltr">
+                            </div>
+                            
+                            <!-- Channel Requirement Section -->
+                            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 mt-2">
+                                <div class="flex items-center gap-2 mb-3">
+                                    <input type="checkbox" id="channelReq" x-model="newQuiz.channelReq" class="w-4 h-4 rounded border-slate-300">
+                                    <label for="channelReq" class="text-xs font-bold text-slate-600">الزام عضویت در کانال قبل از شروع</label>
+                                </div>
+                                <div x-show="newQuiz.channelReq" class="space-y-3">
+                                    <div>
+                                        <label class="text-[10px] text-slate-400 mb-1 block">لینک کانال (ایتا)</label>
+                                        <input type="text" x-model="newQuiz.channelLink" placeholder="https://eitaa.com/..." class="w-full p-2.5 rounded-xl bg-white border border-slate-200 text-xs ltr">
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] text-slate-400 mb-1 block">متن دکمه/پیام</label>
+                                        <input type="text" x-model="newQuiz.channelText" placeholder="جهت شرکت در مسابقه عضو کانال شوید" class="w-full p-2.5 rounded-xl bg-white border border-slate-200 text-xs">
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- Questions -->
+                    <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                        <div class="flex justify-between items-center mb-4">
+                            <h4 class="font-bold text-sm">سوالات</h4>
+                            <div class="flex gap-2">
+                                <button @click="addQuestion('choice')" class="bg-blue-50 text-blue-600 px-3 py-2 rounded-xl text-xs font-bold">+ چندگزینه‌ای</button>
+                                <button @click="addQuestion('text')" class="bg-amber-50 text-amber-600 px-3 py-2 rounded-xl text-xs font-bold">+ تشریحی</button>
+                            </div>
+                        </div>
+                        
+                        <template x-if="newQuiz.questions.length > 0">
+                            <div class="space-y-4">
+                                <template x-for="(q, qIdx) in newQuiz.questions" :key="qIdx">
+                                    <div class="border border-slate-200 rounded-2xl p-4 bg-slate-50/50">
+                                        <div class="flex justify-between items-start mb-3">
+                                            <span class="text-xs font-bold text-slate-700">سوال <span x-text="qIdx+1"></span></span>
+                                            <button @click="removeQuestion(qIdx)" class="text-red-400 hover:text-red-600">
+                                                <i data-lucide="trash" class="w-4 h-4"></i>
+                                            </button>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label class="text-[10px] text-slate-400 mb-1 block">متن سوال</label>
+                                            <textarea x-model="q.text" rows="2" class="w-full p-3 rounded-xl bg-white border border-slate-200 text-xs resize-none"></textarea>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label class="text-[10px] text-slate-400 mb-1 block">نمره</label>
+                                            <input type="number" x-model="q.points" min="0" class="w-full p-3 rounded-xl bg-white border border-slate-200 text-xs">
+                                        </div>
+                                        
+                                        <template x-if="q.type === 'choice'">
+                                            <div class="space-y-2">
+                                                <label class="text-[10px] text-slate-400 block">گزینه‌ها</label>
+                                                <template x-for="(opt, optIdx) in q.options" :key="optIdx">
+                                                    <div class="flex gap-2 items-center">
+                                                        <span class="text-xs w-6 text-center" x-text="String.fromCharCode(1570 + optIdx)"></span>
+                                                        <input type="text" x-model="q.options[optIdx]" class="flex-1 p-2 rounded-xl bg-white border border-slate-200 text-xs" :placeholder="'گزینه ' + (optIdx+1)">
+                                                    </div>
+                                                </template>
+                                                <div class="mt-3">
+                                                    <label class="text-[10px] text-slate-400 mb-1 block">پاسخ صحیح (شماره گزینه)</label>
+                                                    <input type="number" x-model="q.correctAnswer" min="1" max="4" class="w-full p-3 rounded-xl bg-white border border-slate-200 text-xs">
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                        <div x-show="newQuiz.questions.length === 0" class="text-center py-8 text-slate-300 text-xs">
+                            هنوز سوالی اضافه نکرده‌اید
+                        </div>
+                    </div>
+                    
+                    <button @click="saveQuiz" class="w-full bg-green-600 text-white py-4 rounded-2xl font-bold text-sm shadow-xl shadow-green-200 hover:bg-green-700 transition-colors">
+                        ذخیره مسابقه
+                    </button>
+                </div>
+            </div>
+        </template>
+        
+        <!-- MODALS -->
+        <div x-show="modal.show" class="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in" x-cloak>
+            <div class="bg-white w-full max-w-sm rounded-[2rem] p-6 text-center shadow-2xl scale-100">
+                <!-- Standard Modals -->
+                <div x-show="!['lottery_result', 'channel_check'].includes(modal.type)">
+                    <div class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">
+                        <span x-show="modal.type === 'start'">🚀</span>
+                        <span x-show="modal.type === 'exit' || modal.type === 'delete_quiz'">⚠️</span>
+                        <span x-show="modal.type === 'submit'">📝</span>
+                    </div>
+                    <h3 class="font-bold text-lg mb-2" x-text="modal.title"></h3>
+                    <div x-show="modal.type === 'start'" class="text-xs text-slate-500 bg-slate-50 p-4 rounded-2xl mb-6 text-right space-y-2">
+                        <p>• زمان: <span class="font-bold text-slate-800" x-text="modal.data?.noTimer ? 'نامحدود' : modal.data?.timeLimit + ' دقیقه'"></span></p>
+                        <p>• سوالات: <span class="font-bold text-slate-800" x-text="modal.data?.questions?.length || 0"></span></p>
+                    </div>
+                    <p x-show="modal.type !== 'start'" class="text-xs text-slate-400 mb-6" x-text="modal.desc"></p>
+                    <div class="flex gap-3">
+                        <button @click="modal.show = false" class="flex-1 py-3 text-slate-400 font-bold text-sm hover:bg-slate-50 rounded-xl transition">انصراف</button>
+                        <button @click="confirmAction()" class="flex-1 bg-blue-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-200 hover:bg-blue-700 transition">تایید</button>
+                    </div>
+                </div>
+
+                <!-- Channel Check Modal -->
+                <div x-show="modal.type === 'channel_check'">
+                    <div class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner animate-bounce">
+                        📢
+                    </div>
+                    <h3 class="font-bold text-lg mb-2 text-slate-800">عضویت در کانال</h3>
+                    <p class="text-xs text-slate-500 mb-6 leading-relaxed" x-text="modal.data?.text || 'برای ادامه لطفا در کانال ما عضو شوید'"></p>
+                    
+                    <div class="space-y-3">
+                        <button @click="openChannelLink(modal.data?.link)" class="w-full bg-blue-100 text-blue-700 py-3 rounded-xl font-bold text-sm hover:bg-blue-200 transition flex items-center justify-center gap-2">
+                             مشاهده کانال <i data-lucide="external-link" class="w-4 h-4"></i>
+                        </button>
+                        
+                        <button @click="confirmAction()" 
+                                :disabled="!modal.data?.linkClicked"
+                                class="w-full py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
+                                :class="modal.data?.linkClicked ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 hover:bg-blue-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'">
+                             <span>ادامه</span>
+                             <i x-show="!modal.data?.linkClicked" data-lucide="lock" class="w-4 h-4"></i>
+                             <i x-show="modal.data?.linkClicked" data-lucide="check" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Lottery Result Modal -->
+                <div x-show="modal.type === 'lottery_result'" class="pop-in relative">
+                    <button @click="modal.show = false" class="absolute top-0 right-0 p-2 text-slate-300 hover:text-slate-500"><i data-lucide="x" class="w-5 h-5"></i></button>
+                    <!-- Winner -->
+                    <div x-show="modal.data?.isWinner">
+                        <div class="w-24 h-24 bg-yellow-100 text-yellow-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-[0_0_30px_rgba(234,179,8,0.3)]">
+                             <i data-lucide="trophy" class="w-12 h-12"></i>
+                        </div>
+                        <h3 class="font-black text-xl text-slate-800 mb-2">تبریک! برنده شدید</h3>
+                        <p class="text-xs text-slate-500 leading-relaxed mb-6">شما در قرعه‌کشی این مسابقه برنده شده‌اید. جهت دریافت جایزه با پشتیبانی هماهنگ کنید.</p>
+                        <button @click="modal.show = false" class="w-full bg-yellow-500 text-white py-3 rounded-xl font-bold text-sm shadow-lg shadow-yellow-200">بسیار عالی</button>
+                    </div>
+                    <!-- Loser -->
+                    <div x-show="!modal.data?.isWinner">
+                        <div class="w-20 h-20 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                             <i data-lucide="frown" class="w-10 h-10"></i>
+                        </div>
+                        <h3 class="font-bold text-lg text-slate-700 mb-2">متاسفانه برنده نشدید</h3>
+                        <p class="text-xs text-slate-400 mb-6">در این قرعه‌کشی شانس با شما یار نبود. امیدواریم در مسابقات بعدی برنده باشید.</p>
+                        <button @click="modal.show = false" class="w-full bg-slate-100 text-slate-500 py-3 rounded-xl font-bold text-sm hover:bg-slate-200">بستن</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+    <script>
+        function quizApp() {
+            return {
+                view: 'loading',
+                userId: null,
+                isAdmin: false,
+                registered: false,
+                isDemo: false,
+                userData: {},
+                userHistory: [],
+                quizzes: [],
+                systemConfig: {}, 
+                configForm: { systemTitle: '', announcement: '', headerImage: '', bgImage: '', globalChannelReq: false, globalChannelLink: '', globalChannelText: '', botUsername: '' },
+                adminMeta: {},
+                quizTab: 'active',
+                toasts: [],
+                modal: { show: false, type: '', title: '', desc: '', data: null },
+                showStatsTable: false,
+                userSearch: '',
+                years: Array.from({length: 100}, (_, i) => 1403 - i),
+                months: ["فروردین","اردیبهشت","خرداد","تیر","مرداد","شهریور","مهر","آبان","آذر","دی","بهمن","اسفند"],
+                activeQuiz: null,
+                answers: {},
+                timeLeft: 0,
+                timerInterval: null,
+                newQuiz: {},
+                stats: { participants: [], questions: [] },
+                userList: [],
+                targetUser: null,
+                selectedParticipant: null, 
+                manualGrades: {}, 
+                messageText: '',
+                winners: [],
+                lotteryCount: 1,
+
+                get unreadCount() { return this.userData.messages?.filter(m => !m.read).length || 0; },
+                get displayName() { return (this.userData.firstName && this.userData.lastName) ? this.userData.firstName + ' ' + this.userData.lastName : 'کاربر مهمان'; },
+                get filteredQuizzes() {
+                    if (this.quizTab === 'active') {
+                        return this.quizzes.filter(q => q.userStatus === 'active' || q.userStatus === 'pending');
+                    } else {
+                        return this.quizzes.filter(q => q.userStatus === 'submitted' || q.userStatus === 'expired').map(q => {
+                            const hist = this.userHistory.find(h => h.id === q.id);
+                            return { ...q, lastScore: hist?.score || 0, totalPoints: hist?.total || 0 };
+                        });
+                    }
+                },
+                get pinnedQuizzes() { return this.quizzes.filter(q => q.promoted && q.userStatus === 'active'); },
+                get filteredUserList() {
+                    if(!this.userSearch) return this.userList;
+                    const s = this.userSearch.toLowerCase();
+                    return this.userList.filter(u => (u.firstName + ' ' + u.lastName).toLowerCase().includes(s) || u.phone?.includes(s));
+                },
+                get fullScoreCount() { return this.stats.participants.filter(p => p.score === p.total).length; },
+
+                init() { 
+                    this.initIcons(); 
+                    this.initApp(); 
+                    this.$watch('view', () => {
+                        this.initIcons();
+                        window.scrollTo(0, 0);
+                    }); 
+                },
+                initIcons() { setTimeout(() => { if(typeof lucide !== 'undefined') lucide.createIcons(); }, 100); },
+                showToast(message, type = 'info') {
+                    const id = Date.now();
+                    const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+                    this.toasts.push({ id, message, icon: icons[type], visible: true });
+                    setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, 3000);
+                },
+                
+                askConfirm(type, data = null) {
+                    this.modal.type = type;
+                    this.modal.data = data;
+                    this.modal.show = true;
+                    if(type === 'exit') { this.modal.title = 'خروج از مسابقه'; this.modal.desc = 'با خروج از مسابقه، پیشرفت شما از دست می‌رود. خارج می‌شوید؟'; }
+                    else if (type === 'submit') { this.modal.title = 'ثبت پاسخ‌نامه'; this.modal.desc = 'آیا از ثبت نهایی اطمینان دارید؟'; }
+                    else if (type === 'delete_quiz') { this.modal.title = 'حذف مسابقه'; this.modal.desc = 'آیا از حذف این مسابقه اطمینان دارید؟'; }
+                    else if (type === 'start') { this.modal.title = data.title; }
+                },
+
+                openChannelLink(url) {
+                    if (!url) return;
+                    if (window.Eitaa && window.Eitaa.WebApp && window.Eitaa.WebApp.openEitaaLink) {
+                         if(url.includes('eitaa.com')) {
+                             window.Eitaa.WebApp.openEitaaLink(url);
+                         } else {
+                             window.Eitaa.WebApp.openLink(url);
+                         }
+                    } else {
+                        window.open(url, '_blank');
+                    }
+                    if(this.modal.type === 'channel_check' && this.modal.data) {
+                        this.modal.data.linkClicked = true;
+                    }
+                },
+
+                confirmAction() {
+                    const t = this.modal.type;
+                    const d = this.modal.data;
+                    
+                    if (t === 'channel_check') {
+                        this.modal.show = false;
+                        if(d.nextAction === 'start_quiz') {
+                            this.startQuizConfirmed();
+                        } else if (d.nextAction === 'enter_app') {
+                        }
+                        return;
+                    }
+                    
+                    this.modal.show = false;
+                    if(t === 'exit') this.closeQuiz();
+                    if(t === 'submit') this.submitAnswers();
+                    if(t === 'delete_quiz') this.deleteQuiz(this.modal.data);
+                    if(t === 'start') this.startQuizConfirmed();
+                },
+
+                showLotteryResult(q) {
+                    this.modal.type = 'lottery_result';
+                    this.modal.data = q;
+                    this.modal.show = true;
+                },
+
+                async initApp() {
+                    // Check for start_param (Deep Linking Logic)
+                    let startParam = null;
+                    if (window.Eitaa?.WebApp?.initDataUnsafe?.start_param) {
+                         startParam = window.Eitaa.WebApp.initDataUnsafe.start_param;
+                    }
+
+                    if (window.Eitaa?.WebApp?.initDataUnsafe?.user) { this.userId = window.Eitaa.WebApp.initDataUnsafe.user.id; window.Eitaa.WebApp.expand(); }
+                    else { this.userId = localStorage.getItem('mock_user_id') || "TEST_USER"; }
+                    
+                    try {
+                        const res = await fetch('/api/init', { method: 'POST', body: JSON.stringify({ userId: this.userId }) });
+                        const data = await res.json();
+                        if(data.error) throw new Error(data.error);
+                        this.isAdmin = data.isAdmin;
+                        this.registered = data.registered;
+                        this.userData = data.userData;
+                        this.regForm = { firstName: data.userData.firstName || '', lastName: data.userData.lastName || '', phone: data.userData.phone || '', birthDate: data.userData.birthDate || { year: '', month: '', day: '' }};
+                        this.quizzes = data.quizzes;
+                        this.userHistory = data.history || [];
+                        this.adminMeta = data.meta || {};
+                        this.systemConfig = data.config || {};
+                        this.configForm = { ...this.systemConfig }; 
+                        this.isDemo = data.isDemo || false;
+                        this.view = 'landing';
+                        
+                        // Handle Deep Linking Action
+                        if (startParam) {
+                            const targetQuiz = this.quizzes.find(q => q.id === startParam);
+                            if (targetQuiz) {
+                                // Wait a bit for UI to settle
+                                setTimeout(() => {
+                                    this.handleQuizClick(targetQuiz);
+                                }, 500);
+                            }
+                        }
+
+                        if (this.systemConfig.globalChannelReq && !this.isAdmin && !startParam) { // Don't block if coming from deep link instantly (user can exit quiz to see this)
+                             setTimeout(() => {
+                                 this.modal.type = 'channel_check';
+                                 this.modal.data = {
+                                     link: this.systemConfig.globalChannelLink,
+                                     text: this.systemConfig.globalChannelText,
+                                     linkClicked: false,
+                                     nextAction: 'enter_app'
+                                 };
+                                 this.modal.show = true;
+                             }, 500);
+                        }
+
+                    } catch (e) {
+                        this.showToast('عدم دسترسی به سرور. حالت آفلاین.', 'error');
+                        this.view = 'landing'; 
+                        this.isDemo = true;
+                        this.userData = { firstName: 'کاربر', lastName: 'آفلاین' };
+                    }
+                },
+                
+                // Deep Link Generator
+                copyQuizLink(quizId) {
+                    if(!this.systemConfig.botUsername) return this.showToast('لطفا ابتدا آیدی بات را در تنظیمات وارد کنید', 'error');
+                    
+                    // Format: https://eitaa.com/BOT_USERNAME?startapp=QUIZ_ID
+                    // Or standard attachment menu format if configured
+                    const link = `https://eitaa.com/${this.systemConfig.botUsername}?startapp=${quizId}`;
+                    
+                    navigator.clipboard.writeText(link).then(() => {
+                        this.showToast('لینک مسابقه کپی شد', 'success');
+                    }).catch(err => {
+                        this.showToast('خطا در کپی لینک', 'error');
+                    });
+                },
+
+                navigateTo(target) { if(target === 'profile_view') this.markRead(); this.view = target; },
+                async markRead() { if (this.unreadCount > 0 && !this.isDemo) { await fetch('/api/mark-read', { method: 'POST', body: JSON.stringify({ userId: this.userId }) }); this.userData.messages.forEach(m => m.read = true); }},
+                formatBirthDate(bd) { if (!bd || !bd.year) return '---'; return `${bd.year}/${bd.month}/${bd.day}`; },
+                
+                async updateProfile() {
+                    if(!this.regForm.firstName || !this.regForm.phone) return this.showToast('نام و شماره تماس الزامی است', 'error');
+                    if(this.isDemo) return this.showToast('در حالت دمو امکان ذخیره وجود ندارد', 'info');
+                    const res = await fetch('/api/register', { method: 'POST', body: JSON.stringify({ userId: this.userId, userData: this.regForm }) });
+                    const data = await res.json();
+                    if(data.success) { this.registered = true; this.userData = data.user; this.showToast('اطلاعات ذخیره شد', 'success'); this.view = 'profile_view'; }
+                    else if (data.error) { this.showToast(data.error, 'error'); }
+                },
+
+                openConfigModal() { this.configForm = { ...this.systemConfig }; this.view = 'admin_config'; },
+                async saveConfig() { 
+                    if(this.isDemo) return; 
+                    await fetch('/api/admin/save-config', { 
+                        method: 'POST', 
+                        body: JSON.stringify({ 
+                            adminId: this.userId, 
+                            config: this.configForm 
+                        }) 
+                    }); 
+                    this.systemConfig = { ...this.configForm }; 
+                    this.showToast('تنظیمات ذخیره شد', 'success'); 
+                    this.view = 'admin_dash'; 
+                },
+                
+                getStatusText(q) { const map = { active: 'در حال برگزاری', submitted: 'شرکت کرده‌اید', expired: 'پایان یافته', pending: 'شروع نشده' }; return map[q.userStatus] || ''; },
+                
+                handleQuizClick(q) {
+                    if (q.userStatus !== 'active') return;
+                    if (!this.registered) { this.showToast('برای شرکت در مسابقه ابتدا ثبت‌نام کنید', 'info'); this.view = 'register'; return; }
+                    
+                    if (q.channelReq && !this.isAdmin) {
+                        this.modal.type = 'channel_check';
+                        this.modal.data = {
+                            link: q.channelLink,
+                            text: q.channelText,
+                            linkClicked: false,
+                            nextAction: 'start_quiz',
+                            quiz: q
+                        };
+                        this.modal.show = true;
+                        return;
+                    }
+
+                    this.askConfirm('start', q);
+                },
+
+                startQuizConfirmed() {
+                    let q = this.modal.data;
+                    if (this.modal.data && this.modal.data.quiz) {
+                        q = this.modal.data.quiz;
+                    }
+                    
+                    this.activeQuiz = q;
+                    this.answers = {};
+                    this.view = 'take_quiz';
+                    
+                    // Music
+                    if (q.musicUrl && this.$refs.bgMusic) {
+                        this.$refs.bgMusic.src = q.musicUrl;
+                        this.$refs.bgMusic.play().catch(e => console.log('Music autoplay prevented', e));
+                    }
+
+                    if (!q.noTimer) { this.timeLeft = (q.timeLimit || 5) * 60; this.startTimer(); } else { this.timeLeft = 0; }
+                    if (window.Eitaa?.WebApp) window.Eitaa.WebApp.MainButton.setText('ثبت پاسخ‌نامه').show().onClick(() => this.askConfirm('submit'));
+                },
+
+                startTimer() { if(this.timerInterval) clearInterval(this.timerInterval); this.timerInterval = setInterval(() => { if (this.timeLeft > 0) this.timeLeft--; else this.submitAnswers(); }, 1000); },
+                formatTime(s) { return Math.floor(s/60) + ":" + (s%60).toString().padStart(2,'0'); },
+                
+                async submitAnswers() {
+                    clearInterval(this.timerInterval);
+                    if(this.$refs.bgMusic) { this.$refs.bgMusic.pause(); this.$refs.bgMusic.currentTime = 0; }
+                    
+                    if (window.Eitaa?.WebApp) window.Eitaa.WebApp.MainButton.hide();
+                    this.view = 'loading';
+                    if(this.isDemo) { this.showToast('ثبت شد (حالت دمو)', 'success'); this.view = 'landing'; return; }
+                    try {
+                        const res = await fetch('/api/submit', { method: 'POST', body: JSON.stringify({ userId: this.userId, quizId: this.activeQuiz.id, answers: this.answers }) });
+                        const d = await res.json();
+                        if(d.error) throw new Error(d.error);
+                        await this.initApp(); this.showToast('پاسخ‌نامه ثبت شد.', 'success'); this.view = 'quiz_list'; this.quizTab = 'history';
+                    } catch(e) { this.showToast(e.message, 'error'); this.view = 'landing'; }
+                },
+                
+                closeQuiz() { 
+                    clearInterval(this.timerInterval);
+                    if(this.$refs.bgMusic) { this.$refs.bgMusic.pause(); this.$refs.bgMusic.currentTime = 0; }
+                    if (window.Eitaa?.WebApp) window.Eitaa.WebApp.MainButton.hide(); 
+                    this.view = 'landing'; 
+                },
+
+                openAdminQuizList() { this.view = 'admin_quiz_list'; },
+                resetNewQuiz() { this.newQuiz = { id: null, title: '', description: '', timeLimit: 10, noTimer: false, startTime: '', endTime: '', questions: [], channelReq: false, channelLink: '', channelText: '', musicUrl: '' }; this.view = 'admin_create'; },
+                async saveQuiz() {
+                    if(!this.newQuiz.title || this.newQuiz.questions.length === 0) return this.showToast('اطلاعات ناقص است', 'error');
+                    if(this.isDemo) return;
+                    const payload = { adminId: this.userId, quiz: { ...this.newQuiz, startTime: new Date(this.newQuiz.startTime).getTime(), endTime: new Date(this.newQuiz.endTime).getTime() } };
+                    await fetch('/api/admin/create-quiz', { method: 'POST', body: JSON.stringify(payload) });
+                    this.showToast('مسابقه ذخیره شد', 'success'); this.initApp(); this.view = 'admin_dash';
+                },
+                async togglePromote(q) { if(this.isDemo) return; const newStatus = !q.promoted; await fetch('/api/admin/toggle-promote', { method: 'POST', body: JSON.stringify({ adminId: this.userId, quizId: q.id, promoted: newStatus }) }); q.promoted = newStatus; },
+                addQuestion(type) { this.newQuiz.questions.push({ type, points: 1, text: '', options: type === 'choice' ? ['', '', '', ''] : [], correctAnswer: '' }); },
+                removeQuestion(idx) { this.newQuiz.questions.splice(idx, 1); },
+                editQuiz(q) { 
+                    const formatD = (ts) => ts ? new Date(new Date(ts).getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 16) : ''; 
+                    this.newQuiz = JSON.parse(JSON.stringify(q)); 
+                    this.newQuiz.startTime = formatD(q.startTime); 
+                    this.newQuiz.endTime = formatD(q.endTime); 
+                    this.view = 'admin_create'; 
+                },
+                async deleteQuiz(id) { if(this.isDemo) return; await fetch('/api/admin/delete-quiz', { method: 'POST', body: JSON.stringify({ adminId: this.userId, quizId: id }) }); this.showToast('حذف شد', 'success'); this.quizzes = this.quizzes.filter(q => q.id !== id); },
+                async fetchUsers() { 
+                    if(this.isDemo) return; 
+                    const res = await fetch('/api/admin/get-users', { 
+                        method: 'POST', 
+                        body: JSON.stringify({ adminId: this.userId }) 
+                    }); 
+                    const d = await res.json(); 
+                    this.userList = d.users; 
+                    this.view = 'admin_users'; 
+                },
+                manageUser(u) { this.targetUser = u; this.view = 'admin_user_detail'; },
+                async deleteMessage(msgId) {
+                    if(this.isDemo) return;
+                    if(!confirm('آیا از حذف این پیام اطمینان دارید؟')) return;
+                    
+                    const res = await fetch('/api/admin/delete-message', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            adminId: this.userId,
+                            targetUserId: this.targetUser.id,
+                            messageId: msgId
+                        })
+                    });
+                    
+                    const data = await res.json();
+                    if(data.success) {
+                        this.targetUser.messages = this.targetUser.messages.filter(m => m.id !== msgId);
+                        this.showToast('پیام حذف شد', 'success');
+                    }
+                },
+                async sendMessageToUser(ids = null) { 
+                    if(this.isDemo) return; 
+                    const targetIds = ids || [this.targetUser.id]; 
+                    if(!this.messageText && !ids) return; 
+                    const msg = this.messageText || "تبریک! شما در قرعه‌کشی برنده شدید."; 
+                    await fetch('/api/admin/send-message', { 
+                        method: 'POST', 
+                        body: JSON.stringify({ 
+                            adminId: this.userId, 
+                            targetUserId: targetIds, 
+                            message: msg 
+                        }) 
+                    }); 
+                    this.showToast('پیام ارسال شد', 'success'); 
+                    this.messageText = ''; 
+                    if(!ids) this.fetchUsers(); 
+                },
+                async loadStats(qid) { 
+                    if(this.isDemo) return; 
+                    this.view = 'loading'; 
+                    const res = await fetch('/api/admin/stats', { 
+                        method: 'POST', 
+                        body: JSON.stringify({ 
+                            adminId: this.userId, 
+                            quizId: qid 
+                        }) 
+                    }); 
+                    this.stats = await res.json(); 
+                    this.stats.id = qid; 
+                    this.winners = []; 
+                    this.showStatsTable = false; 
+                    this.view = 'admin_stats_view'; 
+                },
+                
+                runLottery() {
+                    const best = this.stats.participants.filter(p => p.score === p.total);
+                    if(!best.length) return this.showToast('کسی نمره کامل نگرفته است', 'error');
+                    this.winners = [...best].sort(() => 0.5 - Math.random()).slice(0, this.lotteryCount);
+                    if(this.winners.length > 0) this.showToast('قرعه‌کشی انجام شد. لطفا ثبت نهایی کنید.', 'info');
+                },
+
+                async saveLotteryResults() {
+                    if(!this.winners.length) return this.showToast('لیست برندگان خالی است', 'error');
+                    if(this.isDemo) return;
+                    
+                    const winnerIds = this.winners.map(w => w.userId);
+                    await fetch('/api/admin/save-lottery', { 
+                        method: 'POST', 
+                        body: JSON.stringify({ 
+                            adminId: this.userId, 
+                            quizId: this.stats.id, 
+                            winnerIds: winnerIds 
+                        }) 
+                    });
+                    this.stats.winners = winnerIds; // update local stats
+                    this.showToast('نتایج قرعه‌کشی با موفقیت ثبت شد', 'success');
+                },
+                
+                async resetLottery() {
+                    if(!confirm('آیا مطمئن هستید؟ لیست برندگان حذف خواهد شد و می‌توانید دوباره قرعه‌کشی کنید.')) return;
+                    if(this.isDemo) return;
+                    await fetch('/api/admin/reset-lottery', { 
+                        method: 'POST', 
+                        body: JSON.stringify({ 
+                            adminId: this.userId, 
+                            quizId: this.stats.id 
+                        }) 
+                    });
+                    this.stats.winners = [];
+                    this.winners = [];
+                    this.showToast('قرعه‌کشی بازنشانی شد', 'success');
+                },
+
+                async deleteSubmission(targetUserId) {
+                    if(!confirm('آیا از حذف پاسخ‌نامه این کاربر اطمینان دارید؟')) return;
+                    if(this.isDemo) return;
+                    
+                    await fetch('/api/admin/delete-submission', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            adminId: this.userId,
+                            quizId: this.stats.id,
+                            targetUserId: targetUserId
+                        })
+                    });
+                    
+                    this.stats.participants = this.stats.participants.filter(p => p.userId !== targetUserId);
+                    this.showToast('پاسخ‌نامه حذف شد', 'success');
+                },
+
+                openGrading(p) {
+                    this.selectedParticipant = p;
+                    this.manualGrades = {}; 
+                    this.stats.questions.forEach((q, idx) => {
+                         if(q.type === 'choice') {
+                              const u = p.answers[idx];
+                              const c = q.correctAnswer;
+                              if(u && u == c) this.manualGrades[idx] = q.points;
+                         }
+                    });
+                },
+                getGradeStatus(qIdx) { if (this.manualGrades[qIdx] === undefined) return 'none'; return this.manualGrades[qIdx] > 0 ? 'correct' : 'wrong'; },
+                isQuestionCorrect(qIdx) { return this.getGradeStatus(qIdx) === 'correct'; },
+                gradeQuestion(qIdx, points) { this.manualGrades[qIdx] = points; },
+                calculateCurrentGrade() { let s = 0; Object.values(this.manualGrades).forEach(v => s+=v); return s; },
+                async saveGrades() { 
+                    const newScore = this.calculateCurrentGrade(); 
+                    await fetch('/api/admin/update-score', { 
+                        method: 'POST', 
+                        body: JSON.stringify({ 
+                            adminId: this.userId, 
+                            quizId: this.stats.id, 
+                            userId: this.selectedParticipant.userId, 
+                            newScore: newScore 
+                        }) 
+                    }); 
+                    const pIndex = this.stats.participants.findIndex(p => p.userId === this.selectedParticipant.userId); 
+                    if(pIndex > -1) this.stats.participants[pIndex].score = newScore; 
+                    this.showToast('نمره ثبت شد', 'success'); 
+                    this.selectedParticipant = null; 
+                },
+                exportToCSV(data, filename) { 
+                    const csvContent = "\uFEFF" + data.map(e => e.join(",")).join("\n"); 
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); 
+                    const link = document.createElement("a"); 
+                    link.href = URL.createObjectURL(blob); 
+                    link.download = filename; 
+                    link.style.display = "none"; 
+                    document.body.appendChild(link); 
+                    link.click(); 
+                    document.body.removeChild(link); 
+                },
+                exportAllUsers() { 
+                    if (!this.userList || this.userList.length === 0) return this.showToast('لیستی وجود ندارد', 'error'); 
+                    const header = ["نام", "نام خانوادگی", "شماره تماس", "تاریخ تولد"]; 
+                    const rows = this.filteredUserList.map(u => [ 
+                        u.firstName, 
+                        u.lastName, 
+                        u.phone || '', 
+                        this.formatBirthDate(u.birthDate) 
+                    ]); 
+                    this.exportToCSV([header, ...rows], "users_list.csv"); 
+                },
+                exportParticipants() { 
+                    const header = ["نام", "نام خانوادگی", "شماره", "نمره", "کل", "زمان ثبت"]; 
+                    const rows = this.stats.participants.map(p => [ 
+                        p.userInfo.firstName, 
+                        p.userInfo.lastName, 
+                        p.userInfo.phone || '', 
+                        p.score, 
+                        p.total, 
+                        new Date(p.submittedAt).toLocaleDateString('fa-IR') 
+                    ]); 
+                    this.exportToCSV([header, ...rows], "quiz_results.csv"); 
+                }
+            }
+        }
+    </script>
+</body>
+</html>
