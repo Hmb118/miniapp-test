@@ -1,1 +1,5 @@
-
+{
+  "name": "eitaa-quiz-app",
+  "compatibility_date": "2025-12-31",
+  "pages_build_output_dir": "/" 
+}
